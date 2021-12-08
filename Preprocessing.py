@@ -71,80 +71,39 @@ def packet_to_sparse_array(packet, max_length=1500):
     return arr
 
 
-def transform_packet(packet):
+def transform_packet(packet, max_length):
     # if should_omit_packet(packet):
     #     return None
 
     packet = remove_ether_header(packet)
     packet = pad_udp(packet)
     packet = mask_ip(packet)
-    # wrpcap("/home/pcl/PangBo/pro/GNNTrafficClassification/Dataset/ProcessedData/" + name, packet, append=True)
-    arr = packet_to_sparse_array(packet)
+    arr = packet_to_sparse_array(packet, max_length)
 
     return arr
 
 
-# def transform_pcap_malware(path, listofnodenum_test, listofkind_test, feature_matrix_test):
-#     # output_path = 'processdata/' + path.name
-#     # if Path(output_path + '_SUCCESS').exists():
-#     #     return
-#     # with Path(output_path + '_SUCCESS').open('w') as f:
-#     #     f.write('')
-#     # print(path,"Done")
-#     # print(path)
-#     # try:
-#     #     read_pcap(path)
-#     # except Scapy_Exception:
-#     #     os.remove(path)
-#     #     return
-#     rows = []
-#     j = 0
-#     for i, packet in enumerate(read_pcap(path)):
-#         arr = transform_packet(packet)
-#         if arr is not None:
-#             prefix = path.name.split('.')[0]
-#             app_label = PREFIX_TO_Malware_ID.get(prefix)
-#             j = j + 1
-#             rows.append(arr.todense().tolist()[0])
-#     if j > 1:
-#         listofnodenum_test.append(j)
-#         listofkind_test.append(app_label)
-#         feature_matrix_test.append(rows)
-#         print(path, 'Done')
-#
-#
-# def transform_pcap_entropy(path, listofnodenum, listofkind, feature_matrix):
-#     rows = []
-#     j = 0
-#     for i, packet in enumerate(read_pcap(path)):
-#         arr = transform_packet(packet)
-#         if arr is not None:
-#             prefix = path.name.split('.')[0]
-#             app_label = PREFIX_TO_ENTROPY_ID.get(prefix)
-#             j = j + 1
-#             rows.append(arr.todense().tolist()[0])
-#     if j > 1:
-#         listofnodenum.append(j)
-#         listofkind.append(app_label)
-#         feature_matrix.append(rows)
-#         print(path, 'Done')
-
-
-def transform_pcap(pcap_path, graphlist, listofkind):
+def transform_pcap(pcap_path, graphlist, listofkind, kind):
     feature_matrix = []
-    text_feature = []
-    direcs = []
+    max_length = 1500
+    if kind == 'app':
+        label_dic = PREFIX_TO_APP_ID
+    elif kind == 'malware':
+        label_dic = PREFIX_TO_Malware_ID
+    else:
+        label_dic = PREFIX_TO_ENTROPY_ID
+        max_length = 750
     print(pcap_path)
-    with open(pcap_path) as csvfile:
-        csv_reader = csv.reader(csvfile)  # 使用csv.reader读取csvfile中的文件
-        for row in csv_reader:
-            feature_matrix.append(list(map(float,row[0].split(','))))
-            text_feature.append(np.array(list(map(float,row[1].split(',')))))
-            direcs.append(int(row[2]))
-    if len(direcs) > 0:
-        node_num = int(pcap_path.name.split('_')[0])
-        label = int(pcap_path.name.split('_')[1])
-        g = single_graph(node_num, feature_matrix, text_feature, direcs)
+    node_num = 0
+    for i, packet in enumerate(read_pcap(pcap_path)):
+        arr = transform_packet(packet, max_length)
+        if arr is not None:
+            node_num = node_num + 1
+            feature_matrix.append(arr.todense().tolist()[0])
+
+    if node_num > 1:
+        label = label_dic.get(pcap_path.name.split('.')[0])
+        g = single_graph(node_num, feature_matrix)
         listofkind.append(label)
         graphlist.append(g)
 
@@ -177,7 +136,7 @@ class graphdataset(object):
         return self.graphs[idx], self.labels[idx]
 
 
-def single_graph(node_num, node_feature, text_feature, direcs):
+def single_graph(node_num, node_feature):
     list_point = []
     list_point_2 = []
     for i in range(node_num - 1):
@@ -187,14 +146,16 @@ def single_graph(node_num, node_feature, text_feature, direcs):
         list_point.append(i + 1)
         list_point_2.append(i)
     # 加上TCP的边
-    for i in range(len(direcs) - 2):
-        if direcs[i] == direcs[i + 1] and direcs[i] != direcs[i + 2]:
-            temp = i + 2
-            while (direcs[i] != direcs[i + 2]):
-                list_point.append(temp)
-                list_point_2.append(i)
-                i = i - 1
+    # for i in range(len(direcs) - 2):
+    #     if direcs[i] == direcs[i + 1] and direcs[i] != direcs[i + 2]:
+    #         temp = i + 2
+    #         while (direcs[i] != direcs[i + 2]):
+    #             list_point.append(temp)
+    #             list_point_2.append(i)
+    #             i = i - 1
     # 构图
+    # print(list_point)
+    # print(node_feature)
     g = dgl.graph((list_point, list_point_2))
     g = dgl.add_self_loop(g)
     g.ndata['h'] = torch.tensor(node_feature)
@@ -202,9 +163,9 @@ def single_graph(node_num, node_feature, text_feature, direcs):
     return g
 
 
-def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
-    testdata_dir_path = Path(testdata_dir_path)
-    valid_data_dir_path = Path(valid_data_dir_path)
+def make_graph(data_dir_path, kind):
+    # testdata_dir_path = Path(testdata_dir_path)
+    # valid_data_dir_path = Path(valid_data_dir_path)
     data_dir_path = Path(data_dir_path)
     if kind == 'app':
         label_dic = PREFIX_TO_APP_ID
@@ -218,28 +179,50 @@ def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
     graphlist = []
     listofkind = []
     for pcap_path in sorted(data_dir_path.iterdir()):
-        transform_pcap(pcap_path, graphlist, listofkind)
-    trainset = graphdataset(graphlist, listofkind, num_classes)
-
+        transform_pcap(pcap_path, graphlist, listofkind, kind)
+    # trainset = graphdataset(graphlist, listofkind, num_classes)
+    train_g = []
+    train_l = []
+    valid_g = []
+    valid_l = []
+    test_g = []
+    test_l = []
+    temp_g = []
+    temp_l = []
+    for i in range(len(graphlist)):
+        if i % 10 == 0:
+            valid_g.append(graphlist[i])
+            valid_l.append(listofkind[i])
+        else:
+            temp_g.append(graphlist[i])
+            temp_l.append(listofkind[i])
+    for i in range(len(temp_g)):
+        if i % 9 == 0:
+            test_g.append(temp_g[i])
+            test_l.append(temp_l[i])
+        else:
+            train_g.append(temp_g[i])
+            train_l.append(temp_l[i])
+    trainset = graphdataset(train_g, train_l, num_classes)
     # 验证集
-    graphlist = []
-    listofkind = []
-    for pcap_path in sorted(valid_data_dir_path.iterdir()):
-        transform_pcap(pcap_path, graphlist, listofkind)
-    validset = graphdataset(graphlist, listofkind, num_classes)
+    # graphlist = []
+    # listofkind = []
+    # for pcap_path in sorted(valid_data_dir_path.iterdir()):
+    #     transform_pcap(pcap_path, graphlist, listofkind,kind)
+    validset = graphdataset(test_g, test_l, num_classes)
 
     # 测试集
-    graphlist = []
-    listofkind = []
-    for pcap_path in sorted(testdata_dir_path.iterdir()):
-        transform_pcap(pcap_path, graphlist, listofkind)
+    # graphlist = []
+    # listofkind = []
+    # for pcap_path in sorted(testdata_dir_path.iterdir()):
+    #     transform_pcap(pcap_path, graphlist, listofkind,kind)
     testset = graphdataset(graphlist, listofkind, num_classes)
 
-    save_graphs("Graphs/"+kind+"/trainset.bin", trainset.graphs,
+    save_graphs("Graphs/" + kind + "/trainset.bin", trainset.graphs,
                 {'labels': torch.tensor(trainset.labels)})
-    save_graphs("Graphs/"+kind+"/validset.bin", validset.graphs,
+    save_graphs("Graphs/" + kind + "/validset.bin", validset.graphs,
                 {'labels': torch.tensor(validset.labels)})
-    save_graphs("Graphs/"+kind+"/testset.bin", testset.graphs,
+    save_graphs("Graphs/" + kind + "/testset.bin", testset.graphs,
                 {'labels': torch.tensor(testset.labels)})
 
 
@@ -313,13 +296,12 @@ def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
 @click.option('-k', '--kind', help='object to be classificated', required=True)
 def main(kind):
     if kind == 'app':
-        make_graph("Dataset/Processed_data/train", "Dataset/Processed_data/valid", "Dataset/Processed_data/test", kind)
+        make_graph("Dataset/Splite_Session/app", 'app')
     elif kind == 'malware':
         make_graph("Dataset/Splite_Session/Malware/trainset", "Dataset/Splite_Session/Malware/validset",
                    "Dataset/Splite_Session/Malware/testset", 'malware')
     else:
-        make_graph("Dataset/Splite_Session/Entropy/train", "Dataset/Splite_Session/Entropy/valid",
-                   "Dataset/Splite_Session/Entropy/test", 'entropy')
+        make_graph("Dataset/Splite_Session/entropy", 'entropy')
 
 
 if __name__ == '__main__':
