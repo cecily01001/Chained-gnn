@@ -16,7 +16,7 @@ from utils.utilsforentropy import PREFIX_TO_ENTROPY_ID,ID_TO_ENTROPY
 from torch.utils.data import DataLoader
 from dgl.nn import SGConv, GATConv, TAGConv, GlobalAttentionPooling, AvgPooling, GraphConv,MaxPooling,SumPooling
 from dgl.data.utils import load_graphs
-# from sklearn.model_selection import cross_val_scoreprint(cross_val_score(model, X, y, cv=5))
+from torch.utils.data.dataset import ConcatDataset
 
 def normalise_cm(cm):
     with errstate(all='ignore'):
@@ -114,271 +114,22 @@ class Classifier(nn.Module):
         # y=self.pooling
         return y
 
-
-def train_app_graphs(train, valid, test):
-    train_graphs, train_labels = load_graphs(train)
-    print("load train graphs")
-    valid_graphs, valid_labels = load_graphs(valid)
-    print("load valid graphs")
-    test_graphs, test_labels = load_graphs(test)
-    print("load test graphs")
-    trainset = graphdataset(train_graphs, train_labels['labels'].numpy().tolist(), len(PREFIX_TO_APP_ID))
-    print("trainset done")
-    validset = graphdataset(valid_graphs, valid_labels['labels'].numpy().tolist(), len(PREFIX_TO_APP_ID))
-    print("validset done")
-    testset = graphdataset(test_graphs, test_labels['labels'].numpy().tolist(), len(PREFIX_TO_APP_ID))
-    print("testset done")
-    data_loader = DataLoader(trainset, batch_size=32, shuffle=True, collate_fn=collate)
-    model = Classifier(1500, 516, trainset.num_classes)
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    # model.train()
-    min_loss = 1000
-    # epoch_losses = []
-    avoid_over = 0
-
-    for epoch in range(1000):
-        model.train()
-        epoch_loss = 0
-        for iter, (bg, label) in enumerate(data_loader):
-            prediction = model(bg)
-            loss = loss_func(prediction, label)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.detach().item()
-
-        epoch_loss /= (iter + 1)
-        print('Epoch {}, loss {:.4f}'.format(epoch, epoch_loss))
-        if epoch_loss < min_loss and epoch_loss < 0.04 and epoch_loss > 0.0004:
-            avoid_over = 0
-            model.eval()
-            valid_x, valid_y = map(list, zip(*validset))
-            valid_bg = dgl.batch(valid_x)
-            valid_y = torch.tensor(valid_y).float().view(-1, 1)
-            valid_probs_Y = torch.softmax(model(valid_bg), 1)
-            valid_sampled_Y = torch.multinomial(valid_probs_Y, 1)
-            valid_argmax_Y = torch.max(valid_probs_Y, 1)[1].view(-1, 1)
-            result1 = (valid_y == valid_sampled_Y.float()).sum().item() / len(valid_y) * 100
-            result2 = (valid_y == valid_argmax_Y.float()).sum().item() / len(valid_y) * 100
-            valid_sampled_Y_done = valid_sampled_Y.float()
-            sum = [0] * 41
-            index = [0] * 41
-            pred_sum = [0] * 41
-            for i in range(len(valid_x)):
-                sum[int(valid_y[i, 0])] = sum[int(valid_y[i, 0])] + 1
-                pred_sum[int(valid_sampled_Y_done[i, 0])] = pred_sum[int(valid_sampled_Y_done[i, 0])] + 1
-                if valid_y[i] == valid_sampled_Y.float()[i]:
-                    index[int(valid_y[i, 0])] = index[int(valid_y[i, 0])] + 1
-                # print(sum)
-                print(pred_sum)
-                print(index)
-
-            print('Epoch {},Accuracy of sampled predictions on the valid set: {:.4f}%'.format(epoch, result1))
-            print('Epoch {},Accuracy of argmax predictions on the valid set: {:.4f}%'.format(epoch, result2))
-            if result1 > 78 or result2 > 78:
-                min_loss = epoch_loss
-                torch.save(model, '2model.pkl')
-                print("model saved")
-        elif epoch_loss <= 0.0004:
-            avoid_over = avoid_over + 1
-            if avoid_over > 10:
-                break
-    model = torch.load('2model.pkl')
-    test_X, test_Y = map(list, zip(*testset))
-    test_bg = dgl.batch(test_X)
-    test_Y = torch.tensor(test_Y).float().view(-1, 1)
-    probs_Y = torch.softmax(model(test_bg), 1)
-    sampled_Y = torch.multinomial(probs_Y, 1)
-    argmax_Y = torch.max(probs_Y, 1)[1].view(-1, 1)
-    print('Accuracy of sampled predictions on the test set: {:.4f}%'.format(
-        (test_Y == sampled_Y.float()).sum().item() / len(test_Y) * 100))
-    print('Accuracy of argmax predictions on the test set: {:4f}%'.format(
-        (test_Y == argmax_Y.float()).sum().item() / len(test_Y) * 100))
-    sampled_Y_done = sampled_Y.float()
-    sum = [0] * 41
-    index = [0] * 41
-    pred_sum = [0] * 41
-    for i in range(len(test_Y)):
-        sum[int(test_Y[i, 0])] = sum[int(test_Y[i, 0])] + 1
-        pred_sum[int(sampled_Y_done[i, 0])] = pred_sum[int(sampled_Y_done[i, 0])] + 1
-        if test_Y[i] == sampled_Y.float()[i]:
-            index[int(test_Y[i, 0])] = index[int(test_Y[i, 0])] + 1
-        # print(sum)
-        # print(pred_sum)
-        # print(index)
-    j = 0
-    for i in range(len(sum)):
-        if sum[j] is not 0 and pred_sum[j] is not 0:
-            print(str(i) + ' kind recall is: ' + str(index[j] / sum[j]))
-            print(str(i) + ' kind precision is: ' + str(index[j] / pred_sum[j]))
-        j = j + 1
-    argmax_Y_done = argmax_Y.float()
-    sum = [0] * 41
-    index = [0] * 41
-    pred_sum = [0] * 41
-    for i in range(len(test_Y)):
-        sum[int(test_Y[i, 0])] = sum[int(test_Y[i, 0])] + 1
-        pred_sum[int(argmax_Y_done[i, 0])] = pred_sum[int(argmax_Y_done[i, 0])] + 1
-        if test_Y[i] == argmax_Y_done.float()[i]:
-            index[int(test_Y[i, 0])] = index[int(test_Y[i, 0])] + 1
-        # print(sum)
-        # print(pred_sum)
-        # print(index)
-    j = 0
-    for i in range(len(sum)):
-        if sum[j] is not 0 and pred_sum[j] is not 0:
-            print(str(i) + ' kind recall is: ' + str(index[j] / sum[j]))
-            print(str(i) + ' kind precision is: ' + str(index[j] / pred_sum[j]))
-        j = j + 1
-
-def train_malware_graphs(train, valid, test):
-    train_graphs, train_labels = load_graphs(train)
-    print("load Mtrain graphs")
-    valid_graphs, valid_labels = load_graphs(test)
-    print("load Mvalid graphs")
-    test_graphs, test_labels = load_graphs(valid)
-    print("load Mtest graphs")
-    trainset = graphdataset(train_graphs, train_labels['labels'].numpy().tolist(), len(PREFIX_TO_Malware_ID))
-    print("trainset done")
-    validset = graphdataset(valid_graphs, valid_labels['labels'].numpy().tolist(), len(PREFIX_TO_Malware_ID))
-    print("validset done")
-    testset = graphdataset(test_graphs, test_labels['labels'].numpy().tolist(), len(PREFIX_TO_Malware_ID))
-    print("testset done")
-    data_loader = DataLoader(trainset, batch_size=32, shuffle=True, collate_fn=collate)
-    model = Classifier(1000, 300, trainset.num_classes)
-    loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    # model.train()
-    min_loss = 1000
-    # epoch_losses = []
-    avoid_over = 0
-    dif_list = []
-    for epoch in range(1000):
-        model.train()
-        epoch_loss = 0
-        # begin = time.clock()
-        for iter, (bg, label) in enumerate(data_loader):
-            prediction = model(bg)
-            loss = loss_func(prediction, label)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.detach().item()
-        # end = time.clock()
-        # dif = end - begin
-        # if len(dif_list) < 100:
-        #     dif_list.append(dif)
-        #     print('训练时长：{：.4f}'.format(dif))
-        # elif len(dif_list) == 100:
-        #     mean_dif=mean(dif_list)
-        #     print('平均训练时长：{：.4f}'.format(mean_dif))
-        epoch_loss /= (iter + 1)
-        print('Epoch {}, loss {:.4f}'.format(epoch, epoch_loss))
-        if epoch_loss < min_loss and epoch_loss < 0.1 and epoch_loss > 0.0003:
-            avoid_over = 0
-            model.eval()
-            valid_x, valid_y = map(list, zip(*validset))
-            valid_bg = dgl.batch(valid_x)
-            valid_y = torch.tensor(valid_y).float().view(-1, 1)
-            valid_probs_Y = torch.softmax(model(valid_bg), 1)
-            valid_sampled_Y = torch.multinomial(valid_probs_Y, 1)
-            valid_argmax_Y = torch.max(valid_probs_Y, 1)[1].view(-1, 1)
-            result1 = (valid_y == valid_sampled_Y.float()).sum().item() / len(valid_y) * 100
-            result2 = (valid_y == valid_argmax_Y.float()).sum().item() / len(valid_y) * 100
-
-            sum = [0] * 6
-            index = [0] * 6
-            for i in range(len(valid_x)):
-                sum[int(valid_y[i, 0])] = sum[int(valid_y[i, 0])] + 1
-                if valid_y[i] == valid_sampled_Y.float()[i]:
-                    index[int(valid_y[i, 0])] = index[int(valid_y[i, 0])] + 1
-                print(sum)
-                print(index)
-
-            print('Epoch {},Accuracy of sampled predictions on the valid set: {:.4f}%'.format(epoch, result1))
-            print('Epoch {},Accuracy of argmax predictions on the valid set: {:.4f}%'.format(epoch, result2))
-            if result1 > 80 or result2 > 80:
-                min_loss = epoch_loss
-                torch.save(model, 'mmodel.pkl')
-                print("model saved")
-        elif epoch_loss <= 0.001:
-            avoid_over = avoid_over + 1
-            if avoid_over > 10:
-                break
-    model = torch.load('mmodel.pkl')
-    test_X, test_Y = map(list, zip(*testset))
-    test_bg = dgl.batch(test_X)
-    test_Y = torch.tensor(test_Y).float().view(-1, 1)
-    probs_Y = torch.softmax(model(test_bg), 1)
-    # sampled_Y = torch.multinomial(probs_Y, 1)
-    argmax_Y = torch.max(probs_Y, 1)[1].view(-1, 1)
-    # sampled_Y_done = sampled_Y.float()
-    argmax_Y_done = argmax_Y.float()
-    # print('Accuracy of sampled predictions on the test set: {:.4f}%'.format(
-    #     (test_Y == sampled_Y.float()).sum().item() / len(test_Y) * 100))
-    print('Accuracy of argmax predictions on the test set: {:4f}%'.format(
-        (test_Y == argmax_Y.float()).sum().item() / len(test_Y) * 100))
-    sum = [0] * 6
-    index = [0] * 6
-    pred_sum = [0] * 6
-    for i in range(len(test_Y)):
-        sum[int(test_Y[i, 0])] = sum[int(test_Y[i, 0])] + 1
-        pred_sum[int(sampled_Y_done[i, 0])] = pred_sum[int(sampled_Y_done[i, 0])] + 1
-        if test_Y[i] == sampled_Y.float()[i]:
-            index[int(test_Y[i, 0])] = index[int(test_Y[i, 0])] + 1
-        print(pred_sum)
-        print(index)
-    j = 0
-    print("Accuracy of sampled predictions")
-    for i in range(len(sum)):
-        if sum[j] is not 0:
-            print(str(i) + ' kind recall is: ' + str(index[j] / sum[j]))
-        else:
-            print(str(i) + ' kind recall is: -1')
-        if pred_sum[j] is not 0:
-            print(str(i) + ' kind precision is: ' + str(index[j] / pred_sum[j]))
-        else:
-            print(str(i) + ' kind precision is: -1')
-        j = j + 1
-
-    sum = [0] * 6
-    index = [0] * 6
-    pred_sum = [0] * 6
-    for i in range(len(test_Y)):
-        sum[int(test_Y[i, 0])] = sum[int(test_Y[i, 0])] + 1
-        pred_sum[int(argmax_Y_done[i, 0])] = pred_sum[int(argmax_Y_done[i, 0])] + 1
-        if test_Y[i] == argmax_Y.float()[i]:
-            index[int(test_Y[i, 0])] = index[int(test_Y[i, 0])] + 1
-        print(pred_sum)
-        print(index)
-    j = 0
-    print("Accuracy of argmax predictions")
-    for i in range(len(sum)):
-        if sum[j] is not 0:
-            print(str(i) + ' kind recall is: ' + str(index[j] / sum[j]))
-        else:
-            print(str(i) + ' kind recall is: -1')
-        if pred_sum[j] is not 0:
-            print(str(i) + ' kind precision is: ' + str(index[j] / pred_sum[j]))
-        else:
-            print(str(i) + ' kind precision is: -1')
-        j = j + 1
-
-
 use_gpu = torch.cuda.is_available()
 
 print('use gpu:', use_gpu)
 device = torch.device("cuda:0")
 
-
-def train_graphs(train, valid, test, kind):
-    train_graphs, train_labels = load_graphs(train)
-    print("load train graphs", train)
-    valid_graphs, valid_labels = load_graphs(valid)
-    print("load valid graphs", valid)
-    test_graphs, test_labels = load_graphs(test)
-    print("load test graphs", test)
+def train_graphs(train, test,kind):
+    train_graphs, train_labels = load_graphs(test)
+    print("load train graphs", test)
+    test_graphs, test_labels = load_graphs(train)
+    print("load valid graphs", train)
+    # train_graphs3, train_labels3 = load_graphs(train3)
+    # print("load test graphs", train3)
+    # train_graphs4, train_labels4 = load_graphs(train4)
+    # print("load test graphs", train4)
+    # train_graphs5, train_labels5 = load_graphs(train5)
+    # print("load test graphs", train5)
     length = 1500
     if kind == 'app':
         label_dic = ID_TO_APP
@@ -389,10 +140,9 @@ def train_graphs(train, valid, test, kind):
 
     trainset = graphdataset(train_graphs, train_labels['labels'].numpy().tolist(), len(label_dic))
     print("trainset done")
-    validset = graphdataset(valid_graphs, valid_labels['labels'].numpy().tolist(), len(label_dic))
-    print("validset done")
     testset = graphdataset(test_graphs, test_labels['labels'].numpy().tolist(), len(label_dic))
-    print("testset done")
+    print("validset done")
+    # concat_dataset = ConcatDataset([trainset2, trainset3,trainset4])
     data_loader = DataLoader(trainset, batch_size=32, shuffle=True, collate_fn=collate)
     model = Classifier(length, 512, trainset.num_classes)
     loss_func = nn.CrossEntropyLoss()
@@ -428,7 +178,7 @@ def train_graphs(train, valid, test, kind):
         if epoch_loss < 5 and epoch_loss > 0.0004:
             avoid_over = 0
             model.eval()
-            valid_x, valid_y = map(list, zip(*validset))
+            valid_x, valid_y = map(list, zip(*testset))
             # valid_bg = dgl.batch(valid_x)
             # if(use_gpu):
             valid_bg = dgl.batch(valid_x).to(device)
@@ -626,7 +376,7 @@ def train_graphs(train, valid, test, kind):
 @click.option('-k', '--kind', help='object to be classificated', required=True)
 def main(kind):
     if kind == 'app':
-        train_graphs("Graphs/appadv/rand_payload_trainset.bin", "Graphs/appadv/rand_payload_validset.bin", "Graphs/appadv/rand_payload_testset.bin","app")
+        train_graphs("Graphs/app5fold/2_trainset.bin", "Graphs/app5fold/2_testset.bin","app")
     elif kind == 'malware':
         train_graphs("Graphs/malware/trainset.bin", "Graphs/malware/validset.bin", "Graphs/malware/testset.bin","malware")
     else:

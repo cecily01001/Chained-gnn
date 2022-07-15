@@ -1,3 +1,5 @@
+import csv
+
 import click
 from pathlib import Path
 from scapy.compat import raw
@@ -13,11 +15,12 @@ from utils.utilsforentropy import PREFIX_TO_ENTROPY_ID, ID_TO_ENTROPY
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score,f1_score
 from grakel import Graph
 from grakel.kernels import ShortestPath,RandomWalk,PropagationAttr,RandomWalkLabeled,GraphletSampling,ShortestPathAttr
 from grakel.datasets import fetch_dataset
 from sklearn.tree import DecisionTreeClassifier
+
 def remove_ether_header(packet):
     if Ether in packet:
         return packet[Ether].payload
@@ -50,7 +53,7 @@ def pad_udp(packet):
 
     return packet
 
-def packet_to_sparse_array(packet, max_length=1500):
+def packet_to_sparse_array(packet, max_length=500):
     arr = np.frombuffer(raw(packet), dtype=np.uint8)[50: max_length]
     # arr = np.frombuffer(raw(packet), dtype=np.uint8)[0: max_length] / 255
     if len(arr) < max_length:
@@ -67,7 +70,6 @@ def transform_packet(packet):
     packet = mask_ip(packet)
     # wrpcap("/home/pcl/PangBo/pro/GNNTrafficClassification/Dataset/ProcessedData/" + name, packet, append=True)
     arr = packet_to_sparse_array(packet)
-
     return arr
 
 def single_graph(node_num, node_feature,app_label):
@@ -85,7 +87,8 @@ def single_graph(node_num, node_feature,app_label):
         # node_attributes[i] = a
     # print(node_attributes)
     # if i==node_num-1:print(edges)
-    g=Graph(edges,node_labels=node_attributes)
+    # g=Graph(edges,node_labels=node_attributes)
+    g = Graph(edges)
     # print(g)
     return g
 
@@ -121,6 +124,8 @@ def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
     # 训练集
     graphlist = list()
     listofkind = list()
+    graphlist = []
+    listofkind = []
     i = 0
     # for pcap_path in sorted(data_dir_path.iterdir()):
     #     if i%10==0:
@@ -131,11 +136,12 @@ def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
     for pcap_path in sorted(testdata_dir_path.iterdir()):
         transform_pcap(pcap_path, graphlist , listofkind,label_dic)
     print(listofkind)
-    G_train, G_test, y_train, y_test = train_test_split(graphlist, listofkind, test_size=0.1, random_state=2)
-    print(y_train)
+    G_train, G_test, y_train, y_test = train_test_split(graphlist, listofkind, test_size=0.3, random_state=2)
+
+    # print(G_train)
     # Uses the shortest path kernel to generate the kernel matrices
-    gk = RandomWalk()
-    # gk = ShortestPath(normalize=False)
+    # gk = RandomWalk()
+    gk = ShortestPath(normalize=True, with_labels=False)
     # gk=GraphletSampling()
     # gk = PropagationAttr(normalize=False)
     K_train = gk.fit_transform(G_train)
@@ -151,22 +157,65 @@ def make_graph(data_dir_path, valid_data_dir_path, testdata_dir_path, kind):
     # Computes and prints the classification accuracy
     acc = accuracy_score(y_test, y_pred)
     print("Accuracy:", str(round(acc * 100, 2)) + "%")
-
+    f1=f1_score(y_test, y_pred,average=None)
+    f = open('grakel/PropagationAttr.csv', 'w', encoding='utf-8', newline="")
+    csv_writer = csv.writer(f)
+    csv_writer.writerow(["f1 score"])
+    for i in f1:
+        csv_writer.writerow([i])
 
 @click.command()
 @click.option('-k', '--kind', help='object to be classificated', required=True)
 def main(kind):
     if kind == 'app':
-        make_graph("Dataset/Splite_Session/app/Train", "Dataset/Splite_Session/app/valid",
-                     "Dataset/Splite_Session/app/Test", kind)
-
-    elif kind == 'malware':
-        make_graph("Dataset/Splite_Session/Malware/trainset", "Dataset/Splite_Session/Malware/validset",
-                     "Dataset/Splite_Session/Malware/testset", kind)
-    else:
-        make_graph("Dataset/Splite_Session/Entropy/train", "Dataset/Splite_Session/Entropy/valid",
-                     "Dataset/Splite_Session/Entropy/test", kind)
-
-
+        make_graph("Dataset/grakel/app", "Dataset/grakel/app",
+                     "Dataset/grakel/app", kind)
+    #
+    # elif kind == 'malware':
+    #     make_graph("Dataset/Splite_Session/Malware/trainset", "Dataset/Splite_Session/Malware/validset",
+    #                  "Dataset/Splite_Session/Malware/testset", kind)
+    # else:
+    #     make_graph("Dataset/Splite_Session/Entropy/train", "Dataset/Splite_Session/Entropy/valid",
+    #                  "Dataset/Splite_Session/Entropy/test", kind)
+    # ----------------------------------------------
+    # MUTAG = fetch_dataset("MUTAG", verbose=False)
+    # G, y = MUTAG.data, MUTAG.target
+    #
+    # # Splits the dataset into a training and a test set
+    # G_train, G_test, y_train, y_test = train_test_split(G, y, test_size=0.1, random_state=42)
+    #
+    # # Uses the shortest path kernel to generate the kernel matrices
+    # gk = ShortestPath(normalize=True)
+    # K_train = gk.fit_transform(G_train)
+    # K_test = gk.transform(G_test)
+    #
+    # # Uses the SVM classifier to perform classification
+    # clf = SVC(kernel="precomputed")
+    # clf.fit(K_train, y_train)
+    # y_pred = clf.predict(K_test)
+    #
+    # # Computes and prints the classification accuracy
+    # acc = accuracy_score(y_test, y_pred)
+    # print("Accuracy:", str(round(acc * 100, 2)) + "%")
+#     --------------------------------------------------------------
+#     ENZYMES_attr = fetch_dataset("ENZYMES", prefer_attr_nodes=True, verbose=False)
+#     G, y = ENZYMES_attr.data, ENZYMES_attr.target
+#
+#     # Splits the dataset into a training and a test set
+#     G_train, G_test, y_train, y_test = train_test_split(G, y, test_size=0.1, random_state=42)
+#
+#     # Uses the graphhopper kernel to generate the kernel matrices
+#     gk = PropagationAttr(normalize=False)
+#     K_train = gk.fit_transform(G_train)
+#     K_test = gk.transform(G_test)
+#
+#     # Uses the SVM classifier to perform classification
+#     clf = SVC(kernel="precomputed")
+#     clf.fit(K_train, y_train)
+#     y_pred = clf.predict(K_test)
+#
+#     # Computes and prints the classification accuracy
+#     acc = accuracy_score(y_test, y_pred)
+#     print("Accuracy:", str(round(acc * 100, 2)) + "%")
 if __name__ == '__main__':
     main()

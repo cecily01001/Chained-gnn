@@ -72,6 +72,7 @@ def packet_to_sparse_array(packet, max_length=1500):
     arr = sparse.csr_matrix(arr)
     return arr
 
+
 # def packet_to_sparse_array(packet, max_length=1500):
 #     # arr = np.frombuffer(raw(packet), dtype=np.uint8)[0: max_length]
 #     # arr = np.frombuffer(raw(packet), dtype=np.uint8)[0: max_length] / 255
@@ -94,7 +95,7 @@ def transform_packet(packet, max_length):
 
 def transform_pcap(pcap_path, graphlist, listofkind, kind):
     feature_matrix = []
-    direcs=[]
+    direcs = []
     max_length = 1500
     if kind == 'app':
         label_dic = PREFIX_TO_APP_ID
@@ -122,7 +123,7 @@ def transform_pcap(pcap_path, graphlist, listofkind, kind):
 
     if node_num > 1:
         label = label_dic.get(pcap_path.name.split('.')[0])
-        g = single_graph(node_num, feature_matrix,direcs)
+        g = single_graph(node_num, feature_matrix, direcs)
         if g:
             listofkind.append(label)
             graphlist.append(g)
@@ -155,7 +156,8 @@ class graphdataset(object):
         """
         return self.graphs[idx], self.labels[idx]
 
-def single_graph(node_num, node_feature,direcs):
+
+def single_graph(node_num, node_feature, direcs):
     list_point = []
     list_point_2 = []
     # process_node_num=int(node_num/10)
@@ -176,9 +178,7 @@ def single_graph(node_num, node_feature,direcs):
     #             i = i - 1
     g = dgl.graph((list_point, list_point_2))
     g = dgl.add_self_loop(g)
-    # node_feature1=node_feature+[np.random.randn(1500)]*process_node_num
-    node_feature1=np.concatenate((node_feature,[np.random.randn(150)]*node_num),axis=1)
-    g.ndata['h'] = torch.tensor(node_feature1,dtype=torch.float)
+    g.ndata['h'] = torch.tensor(node_feature, dtype=torch.float)
     # g.ndata['x'] = torch.tensor(text_feature)
     return g
 
@@ -201,118 +201,113 @@ def make_graph(data_dir_path, kind):
     for pcap_path in sorted(data_dir_path.iterdir()):
         transform_pcap(pcap_path, graphlist, listofkind, kind)
 
-    train_g = []
-    train_l = []
-    valid_g = []
-    valid_l = []
-    test_g = []
-    test_l = []
-    temp_g = []
-    temp_l = []
+    f1_g = []
+    f1_l = []
+    f2_g = []
+    f2_l = []
+    f3_g = []
+    f3_l = []
+    f4_g = []
+    f4_l = []
+    f5_g = []
+    f5_l = []
+
+    temp1 = []
+    temp1_l = []
+    temp2 = []
+    temp2_l = []
+    temp3 = []
+    temp3_l = []
+    temp4 = []
     for i in range(len(graphlist)):
-        if i % 10 == 0:
-            valid_g.append(graphlist[i])
-            valid_l.append(listofkind[i])
+        if i % 5 == 0:
+            f1_g.append(graphlist[i])
+            f1_l.append(listofkind[i])
         else:
-            temp_g.append(graphlist[i])
-            temp_l.append(listofkind[i])
-    for i in range(len(temp_g)):
-        if i % 9 == 0:
-            test_g.append(temp_g[i])
-            test_l.append(temp_l[i])
+            temp1.append(graphlist[i])
+            temp1_l.append(listofkind[i])
+    for i in range(len(temp1_l)):
+        if i % 4 == 0:
+            f2_g.append(temp1[i])
+            f2_l.append(temp1_l[i])
         else:
-            train_g.append(temp_g[i])
-            train_l.append(temp_l[i])
-    trainset = graphdataset(train_g, train_l, num_classes)
+            temp2.append(temp1[i])
+            temp2_l.append(temp1_l[i])
+    for i in range(len(temp2_l)):
+        if i % 3 == 0:
+            f3_g.append(temp2[i])
+            f3_l.append(temp2_l[i])
+        else:
+            temp3.append(temp2[i])
+            temp3_l.append(temp2_l[i])
+    for i in range(len(temp3_l)):
+        if i % 2 == 0:
+            f4_g.append(temp3[i])
+            f4_l.append(temp3_l[i])
+        else:
+            f5_g.append(temp3[i])
+            f5_l.append(temp3_l[i])
 
-    # 验证集
-    # graphlist = []
-    # listofkind = []
-    # for pcap_path in sorted(valid_data_dir_path.iterdir()):
-    #     transform_pcap(pcap_path, graphlist, listofkind,kind)
+    test1 = graphdataset(f1_g, f1_l, num_classes)
+    # train2 = graphdataset(f2_g, f2_l, num_classes)
+    # train3 = graphdataset(f3_g, f3_l, num_classes)
+    # train4 = graphdataset(f4_g, f4_l, num_classes)
+    # train5 = graphdataset(f5_g, f5_l, num_classes)
+    train1=graphdataset(f2_g+f3_g+f4_g+f5_g,f2_l+f3_l+f4_l+f5_l,num_classes)
+    save_graphs("Graphs/" + kind + "5fold/1_trainset.bin", test1.graphs,
+                {'labels': torch.tensor(test1.labels)})
+    save_graphs("Graphs/" + kind + "5fold/1_testset.bin", train1.graphs,
+                {'labels': torch.tensor(train1.labels)})
 
-    validset = graphdataset(valid_g, valid_l, num_classes)
+    test2 = graphdataset(f2_g, f2_l, num_classes)
+    # train2 = graphdataset(f2_g, f2_l, num_classes)
+    # train3 = graphdataset(f3_g, f3_l, num_classes)
+    # train4 = graphdataset(f4_g, f4_l, num_classes)
+    # train5 = graphdataset(f5_g, f5_l, num_classes)
+    train2 = graphdataset(f1_g + f3_g + f4_g + f5_g, f1_l + f3_l + f4_l + f5_l, num_classes)
+    save_graphs("Graphs/" + kind + "5fold/2_trainset.bin", test2.graphs,
+                {'labels': torch.tensor(test2.labels)})
+    save_graphs("Graphs/" + kind + "5fold/2_testset.bin", train2.graphs,
+                {'labels': torch.tensor(train2.labels)})
 
-    # 测试集
-    # graphlist = []
-    # listofkind = []
-    # for pcap_path in sorted(testdata_dir_path.iterdir()):
-    #     transform_pcap(pcap_path, graphlist, listofkind,kind)
+    test3 = graphdataset(f3_g, f3_l, num_classes)
+    # train2 = graphdataset(f2_g, f2_l, num_classes)
+    # train3 = graphdataset(f3_g, f3_l, num_classes)
+    # train4 = graphdataset(f4_g, f4_l, num_classes)
+    # train5 = graphdataset(f5_g, f5_l, num_classes)
+    train3 = graphdataset(f1_g + f2_g + f4_g + f5_g, f1_l + f2_l + f4_l + f5_l, num_classes)
+    save_graphs("Graphs/" + kind + "5fold/3_trainset.bin", test3.graphs,
+                {'labels': torch.tensor(test3.labels)})
+    save_graphs("Graphs/" + kind + "5fold/3_testset.bin", train3.graphs,
+                {'labels': torch.tensor(train3.labels)})
 
-    testset = graphdataset(test_g, test_l, num_classes)
+    test4 = graphdataset(f4_g, f4_l, num_classes)
+    # train2 = graphdataset(f2_g, f2_l, num_classes)
+    # train3 = graphdataset(f3_g, f3_l, num_classes)
+    # train4 = graphdataset(f4_g, f4_l, num_classes)
+    # train5 = graphdataset(f5_g, f5_l, num_classes)
+    train4 = graphdataset(f1_g + f2_g + f3_g + f5_g, f1_l + f2_l + f3_l + f5_l, num_classes)
+    save_graphs("Graphs/" + kind + "5fold/4_trainset.bin", test4.graphs,
+                {'labels': torch.tensor(test4.labels)})
+    save_graphs("Graphs/" + kind + "5fold/4_testset.bin", train4.graphs,
+                {'labels': torch.tensor(train4.labels)})
 
-    save_graphs("Graphs/" + kind + "adv/rand_payload_trainset.bin", trainset.graphs,
-                {'labels': torch.tensor(trainset.labels)})
-    save_graphs("Graphs/" + kind + "adv/rand_payload_validset.bin", validset.graphs,
-                {'labels': torch.tensor(validset.labels)})
-    save_graphs("Graphs/" + kind + "adv/rand_payload_testset.bin", testset.graphs,
-                {'labels': torch.tensor(testset.labels)})
-
-
-# def make_entropy_graph(data_dir_path, valid_data_dir_path, testdata_dir_path):
-#     testdata_dir_path = Path(testdata_dir_path)
-#     valid_data_dir_path = Path(valid_data_dir_path)
-#     data_dir_path = Path(data_dir_path)
-#     listofkind = []
-#     listofnodenum = []
-#     feature_matrix = []
-#     listofkind_valid = []
-#     listofnodenum_valid = []
-#     feature_matrix_valid = []
-#     listofkind_test = []
-#     listofnodenum_test = []
-#     feature_matrix_test = []
-#     num_classes = len(PREFIX_TO_ENTROPY_ID)
-#     for pcap_path in sorted(data_dir_path.iterdir()):
-#         transform_pcap_entropy(pcap_path, listofnodenum, listofkind, feature_matrix)
-#     for pcap_path in sorted(valid_data_dir_path.iterdir()):
-#         transform_pcap_entropy(pcap_path, listofnodenum_valid, listofkind_valid, feature_matrix_valid)
-#     for pcap_path in sorted(testdata_dir_path.iterdir()):
-#         transform_pcap_entropy(pcap_path, listofnodenum_test, listofkind_test, feature_matrix_test)
-#     trainset = graphdataset(listofnodenum, listofkind, feature_matrix, num_classes)
-#     validset = graphdataset(listofnodenum_valid, listofkind_valid, feature_matrix_valid, num_classes)
-#     testset = graphdataset(listofnodenum_test, listofkind_test, feature_matrix_test, num_classes)
-#     # graph_labels = {"graph_sizes": torch.tensor()}
-#     save_graphs("Graphs/Entropy/trainset.bin", trainset.graphs,
-#                 {'labels': torch.tensor(trainset.labels)})
-#     save_graphs("Graphs/Entropy/validset.bin", validset.graphs,
-#                 {'labels': torch.tensor(validset.labels)})
-#     save_graphs("Graphs/Entropy/testset.bin", testset.graphs,
-#                 {'labels': torch.tensor(testset.labels)})
-#
-#
-# def make_malware_graph(data_dir_path, valid_data_dir_path, testdata_dir_path):
-#     testdata_dir_path = Path(testdata_dir_path)
-#     valid_data_dir_path = Path(valid_data_dir_path)
-#     data_dir_path = Path(data_dir_path)
-#     listofkind = []
-#     listofnodenum = []
-#     feature_matrix = []
-#     listofkind_valid = []
-#     listofnodenum_valid = []
-#     feature_matrix_valid = []
-#     listofkind_test = []
-#     listofnodenum_test = []
-#     feature_matrix_test = []
-#     num_classes = len(PREFIX_TO_Malware_ID)
-#     for pcap_path in sorted(data_dir_path.iterdir()):
-#         transform_pcap_malware(pcap_path, listofnodenum, listofkind, feature_matrix)
-#     for pcap_path in sorted(valid_data_dir_path.iterdir()):
-#         transform_pcap_malware(pcap_path, listofnodenum_valid, listofkind_valid, feature_matrix_valid)
-#     for pcap_path in sorted(testdata_dir_path.iterdir()):
-#         transform_pcap_malware(pcap_path, listofnodenum_test, listofkind_test, feature_matrix_test)
-#     print(len(listofnodenum))
-#     print(len(feature_matrix))
-#     trainset = graphdataset(listofnodenum, listofkind, feature_matrix, num_classes)
-#     validset = graphdataset(listofnodenum_valid, listofkind_valid, feature_matrix_valid, num_classes)
-#     testset = graphdataset(listofnodenum_test, listofkind_test, feature_matrix_test, num_classes)
-#     # graph_labels = {"graph_sizes": torch.tensor()}
-#     save_graphs("Graphs/Malware/trainset.bin", trainset.graphs,
-#                 {'labels': torch.tensor(trainset.labels)})
-#     save_graphs("Graphs/Malware/validset.bin", validset.graphs,
-#                 {'labels': torch.tensor(validset.labels)})
-#     save_graphs("Graphs/Malware/testset.bin", testset.graphs,
-#                 {'labels': torch.tensor(testset.labels)})
+    test5 = graphdataset(f5_g, f5_l, num_classes)
+    # train2 = graphdataset(f2_g, f2_l, num_classes)
+    # train3 = graphdataset(f3_g, f3_l, num_classes)
+    # train4 = graphdataset(f4_g, f4_l, num_classes)
+    # train5 = graphdataset(f5_g, f5_l, num_classes)
+    train5 = graphdataset(f1_g + f2_g + f3_g + f4_g, f1_l + f2_l + f3_l + f4_l, num_classes)
+    save_graphs("/home/data/PangBo/Graphs/" + kind + "5fold/5_trainset.bin", test5.graphs,
+                {'labels': torch.tensor(test5.labels)})
+    save_graphs("/home/data/PangBo/Graphs/" + kind + "5fold/5_testset.bin", train5.graphs,
+                {'labels': torch.tensor(train5.labels)})
+    # save_graphs("Graphs/" + kind + "5fold/3_trainset.bin", train3.graphs,
+    #             {'labels': torch.tensor(train3.labels)})
+    # save_graphs("Graphs/" + kind + "5fold/4_trainset.bin", train4.graphs,
+    #             {'labels': torch.tensor(train4.labels)})
+    # save_graphs("Graphs/" + kind + "5fold/5_trainset.bin", train5.graphs,
+    #             {'labels': torch.tensor(train5.labels)})
 
 
 @click.command()

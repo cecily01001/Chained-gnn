@@ -8,16 +8,18 @@ from scapy.compat import raw
 from scapy.layers.inet import IP, UDP
 from scapy.layers.l2 import Ether
 from scapy.packet import Padding
+from scapy.utils import rdpcap
 from scipy import sparse
-from utils.utilsformalware import should_omit_packet, read_pcap, PREFIX_TO_Malware_ID
-from utils.utilsforapps import PREFIX_TO_APP_ID
-from utils.utilsforentropy import PREFIX_TO_ENTROPY_ID
+# from utils.utilsformalware import should_omit_packet, read_pcap, PREFIX_TO_Malware_ID
+# from utils.utilsforapps import PREFIX_TO_APP_ID
+# from utils.utilsforentropy import PREFIX_TO_ENTROPY_ID
 from dgl.data.utils import save_graphs
 
 from sklearn.manifold import TSNE
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+from pandas.core.frame import DataFrame
 cnames = {
 # 'aliceblue':            '#F0F8FF',
 # 'antiquewhite':         '#FAEBD7',
@@ -159,7 +161,105 @@ cnames = {
 'whitesmoke':           '#F5F5F5',
 'yellow':               '#FFFF00',
 'yellowgreen':          '#9ACD32'}
+PREFIX_TO_APP_ID = {
+    'ppstream': 0,
+    'qqmusic': 1,
+    'sbs_gorealra': 2,
+    'scribd': 3,
+    'tunein_radio': 4,
+    'youku': 5,
+    'vsee': 6,
+    'icq': 7,
+    'imo': 8,
+    'whatsapp': 9,
+    'alibaba': 10,
+    'any': 11,
+    'espn_star_sports': 12,
+    'firefox': 13,
+    'flipboard': 14,
+    'google': 15,
+    'hupu': 16,
+    'speedtest': 17,
+    'yahoo': 18,
+    'yandex': 19,
+    'teamviewer': 20,
+    'fubar': 21,
+    'pinterest': 22,
+    'travelzoo': 23,
+    'nbc': 24,
+    'startv': 25,
+    'moneycontrol': 26,
+    'mlb': 27,
+    'nhl_gamecenter':28,
+    'chrome':29,
+    'dictionary':30,
+    'yahoo_messenger':31,
+    'itunes':32,
+    'kik':33,
+    'afreecatv':34,
+    'skype':35,
+    'usa_today':36,
+    'mega':37,
+    'tagged':38,
+    'camfrog':39,
+    'amazon_instant_video':40,
+}
 
+ID_TO_APP = {
+    0:'ppstream',
+    1:'qqmusic',
+    2:'sbs_gorealra',
+    3:'scribd',
+    4:'tunein_radio',
+    5:'youku',
+    6:'vsee',
+    7:'icq',
+    8:'imo',
+    9:'whatsapp',
+    10:'alibaba',
+    11:'any',
+    12:'espn_star_sports',
+    13:'firefox',
+    14:'flipboard',
+    15:'google',
+    16:'hupu',
+    17:'speedtest',
+    18:'yahoo',
+    19:'yandex',
+    20:'teamviewer',
+    21:'fubar',
+    22:'pinterest',
+    23:'travelzoo',
+    24:'nbc',
+    25:'startv',
+    26:'moneycontrol',
+    27:'mlb',
+    28:'nhl_gamecenter',
+    29:'chrome',
+    30:'dictionary',
+    31:'yahoo_messenger',
+    32:'itunes',
+    33:'kik',
+    34:'afreecatv',
+    35:'skype',
+    36:'usa_today',
+    37:'mega',
+    38:'tagged',
+    39:'camfrog',
+    40:'amazon_instant_video',
+}
+PREFIX_TO_Malware_ID = {
+    'Artemis': 0,
+    'Emotet': 1,
+    'Exploit': 2,
+    'Packed': 3,
+    'Trojan-FKME': 4,
+}
+
+def read_pcap(path: Path):
+    packets = rdpcap(str(path))
+
+    return packets
 def plot_embedding_2D(data, label):
     # x_min, x_max = np.min(data, 0), np.max(data, 0)
     vis_x = data[:, 0]  # 0维
@@ -196,14 +296,14 @@ def plot_embedding_2D(data, label):
 def get_sne_data(label, feature_array):  # Input_path为你自己原始数据存储路径，我的路径就是上面的'./Images'
 
     data = np.zeros((len(label), 1500))  # 初始化一个np.array数组用于存数据
-    label_np = np.zeros((len(label),))  # 初始化一个np.array数组用于存数据
-    for k in range(len(label)):
-        label_np[k] = label[k]
-    print(label_np)
+    # label_np = np.zeros((len(label),))  # 初始化一个np.array数组用于存数据
+    # for k in range(len(label)):
+    #     label_np[k] = label[k]
+    # print(label_np)
     for i in range(len(label)):
         data[i] = feature_array[i]
         n_samples, n_features = data.shape
-    return data, label, n_samples, n_features
+    return data, n_samples, n_features
 
 
 def remove_ether_header(packet):
@@ -251,8 +351,8 @@ def packet_to_sparse_array(packet, max_length=1500):
 
 
 def transform_packet(packet):
-    if should_omit_packet(packet):
-        return None
+    # if should_omit_packet(packet):
+    #     return None
 
     packet = remove_ether_header(packet)
     packet = pad_udp(packet)
@@ -310,26 +410,15 @@ def transform_pcap(path, listofnodenum, listofkind, feature_matrix):
             # get labels for app identification
             prefix = path.name.split('.')[0]
             # app_label = PREFIX_TO_APP_ID.get(prefix)
-            app_label = PREFIX_TO_ENTROPY_ID.get(prefix)
+            # app_label = PREFIX_TO_APP_ID.get(prefix)
             j = j + 1
             rows.append(arr.todense().tolist()[0])
     if j>1:
-        if app_label:
             rows=np.array(rows)
             mean_row=rows.mean(axis=0)  # 列
             # mean_row = np.array(mean_row)
             listofnodenum.append(j)
-            listofkind.append(app_label)
-            feature_matrix.append(mean_row)
-            print(path, 'Done')
-        else:
-            print(prefix)
-            print(app_label)
-            rows=np.array(rows)
-            mean_row=rows.mean(axis=0)  # 列
-            # mean_row = np.array(mean_row)
-            listofnodenum.append(j)
-            listofkind.append(app_label)
+            listofkind.append(prefix)
             feature_matrix.append(mean_row)
             print(path, 'Done')
 
@@ -382,9 +471,9 @@ class graphdataset(object):
         return self.graphs[idx], self.labels[idx]
 
 
-def make_app_graph(data_dir_path, valid_data_dir_path, testdata_dir_path):
-    testdata_dir_path = Path(testdata_dir_path)
-    valid_data_dir_path = Path(valid_data_dir_path)
+def make_app_graph(data_dir_path):
+    # testdata_dir_path = Path(testdata_dir_path)
+    # valid_data_dir_path = Path(valid_data_dir_path)
     data_dir_path = Path(data_dir_path)
     listofkind = []
     listofnodenum = []
@@ -395,16 +484,20 @@ def make_app_graph(data_dir_path, valid_data_dir_path, testdata_dir_path):
     listofkind_test = []
     listofnodenum_test = []
     feature_matrix_test = []
-    num_classes=len(PREFIX_TO_ENTROPY_ID)
+    # num_classes=len(PREFIX_TO_ENTROPY_ID)
     for pcap_path in sorted(data_dir_path.iterdir()):
         transform_pcap(pcap_path, listofnodenum, listofkind, feature_matrix)
 
-    data, label, n_samples, n_features = get_sne_data(listofkind,feature_matrix)
-    tsne_2D = TSNE(n_components=2, init='pca', random_state=0)  # 调用TSNE
+    data, n_samples, n_features = get_sne_data(listofkind,feature_matrix)
+    tsne_2D = TSNE(n_components=3, init='pca', random_state=0)  # 调用TSNE
     result_2D = tsne_2D.fit_transform(data)
-    fig1 = plot_embedding_2D(result_2D, label)
+    # fig1 = plot_embedding_2D(result_2D, label)
+    data1 = DataFrame(result_2D)
+    data1.to_csv('/home/user1/PangBo/CGNN/TSNE/entropy_3D.csv', index=False, header=False)
+    label=DataFrame(listofkind)
+    label.to_csv('/home/user1/PangBo/CGNN/TSNE/entropy_label.csv', index=False, header=False)
     # plt.show(fig1)
-    fig1.savefig('entropy_t_sne.png')
+    # fig1.savefig('entropy_t_sne.png')
     # result=[0]*41
     # num=[0]*41
     # length=len(listofnodenum)
@@ -490,13 +583,13 @@ def make_malware_graph(data_dir_path, valid_data_dir_path, testdata_dir_path):
                 {'labels': torch.tensor(testset.labels)})
 
 
-@click.command()
-@click.option('-k', '--kind', help='object to be classificated', required=True)
-def main(kind):
-    if kind == 'app':
-        make_app_graph("Dataset/Splite_Session/Entropy/train", "Dataset/Splite_Session/app/valid", "Dataset/Splite_Session/app/Test")
-    elif kind == 'malware':
-        make_malware_graph("Dataset/Malware/trainset", "Dataset/Malware/validset", "Dataset/Malware/testset")
+# @click.command()
+# @click.option('-k', '--kind', help='object to be classificated', required=True)
+def main():
+    # if kind == 'app':
+        make_app_graph("/home/user1/PangBo/GNNTrafficClassification/Dataset/Splite_Session/Entropy/test")
+    # elif kind == 'malware':
+    #     make_malware_graph("Dataset/Malware/trainset", "Dataset/Malware/validset", "Dataset/Malware/testset")
 
 
 if __name__ == '__main__':
